@@ -34,7 +34,7 @@ def main():
                sim_freq=120,
                init_xyzs=np.array([0,0,1.0]),
                gui=True,)
-    env._max_episode_steps = 500
+    env._max_episode_steps = 100
     onnx_path = "fc.onnx"
     onnx_model = onnx.load(onnx_path)
     onnx.checker.check_model(onnx_model)
@@ -46,10 +46,9 @@ def main():
     done = False
     i = 0
     while not done:
-        input("step")
         action = model.run(None, {"input": np.expand_dims(obs.astype("float32"), 0)})[0][0]
-        obs, reward, done, info = env.step(action)
         action = (action+1)/2
+        obs, reward, done, info = env.step(action)
         print(f"{action}\r")
         env.render()
         sync(i, start, env.TIMESTEP)

@@ -37,7 +37,7 @@ def run():
                init_xyzs=[0,0,0])
     
     n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.array([0.5]*n_actions), sigma=0.3 * np.ones(n_actions))
+    action_noise = NormalActionNoise(mean=np.array([0.5]*n_actions), sigma=0.1 * np.ones(n_actions))
 
     model = TD3(MlpPolicy,
                 env,
@@ -65,9 +65,9 @@ def run():
                        init_xyzs=[init_x,init_y,init_z],
                        final_xyzs=[0,0,1.0],
                        init_RPYs=[0,0,0],
-                       final_yaw=[0],
+                       final_yaw=0,
                        sim_freq=120)
-            env._max_episode_steps = 1000
+            env._max_episode_steps = 100
             model.set_env(env)
 
             model.learn(total_timesteps=10000)

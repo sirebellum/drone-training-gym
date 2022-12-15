@@ -34,25 +34,27 @@ class PathFinderEnv(gym.Env):
         self.init_xyzs = np.array(init_xyzs)
         self.final_xyzs = np.array(final_xyzs)
         self.init_RPYs = np.array(init_RPYs)
+        self.final_RPYs = np.array([0,0,final_yaw])
 
         if gui:
             self.client = p.connect(p.GUI)
         else:
             self.client = p.connect(p.DIRECT)
 
-        self.xyz = init_xyzs
-        self.RPY = init_RPYs
+        self.xyz = self.init_xyzs
+        self.RPY = self.init_RPYs
+        self.quat = p.getQuaternionFromEuler(init_RPYs)
         self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
-        self.state = np.array([[*init_xyzs, *self.La, *self.Wa]]*self.mem_count)
+        self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
+        self.state = np.array([[*self.init_xyzs, *self.La, *self.Wa]]*self.mem_count)
         self.state_memory = deque(maxlen=self.mem_count)
         self.Lv_memory = deque(maxlen=2)
         self.Lv_memory.append(np.array([0,0,0]))
         self.Wv_memory = deque(maxlen=2)
         self.Wv_memory.append(np.array([0,0,0]))
-        self.quat = p.getQuaternionFromEuler(init_RPYs)
 
         # Drone data
-        self.max_rpm = 42000
+        self.max_rpm = 20000
         self.KF, self.KM = [0,0]
         self._parseURDFParameters()
         self.DRAG_COEFF = 9.1785e-7
@@ -67,7 +69,7 @@ class PathFinderEnv(gym.Env):
         self.current_episode = 0
         
         # Here, low is the lower limit of observation range, and high is the higher limit.
-        low_ob = np.array([[-1,-1,-1, -1,-1,-1, -1,-1,-1]]*self.mem_count) # x y z Wx Wy Wz Ax Ay Az * mem_count
+        low_ob = np.array([[-1,-1,-1, -1,-1,-1, -1,-1,-1]]*self.mem_count) # x y z Ax Ay Az Wx Wy Wz * mem_count
         high_ob = np.array([[1,1,1, 1,1,1, 1,1,1]]*self.mem_count)
         self.observation_space = spaces.Box(low_ob, high_ob,
                                             shape=(self.mem_count,9),
@@ -146,11 +148,11 @@ class PathFinderEnv(gym.Env):
         # Take a step, and observe environment.
         self.current_timestep += 1
 
-        if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
-        or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
-        or (self.xyz[2] > self.z_max) or (self.xyz[2] < 0.1):
-            self.episode_over = True
-            reward -= 500
+        # if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
+        # or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
+        # or (self.xyz[2] > self.z_max) or (self.xyz[2] < 0.1):
+        #     self.episode_over = True
+        #     reward -= 100
 
         # Wait for state memory to fill up
         ret_state = np.stack(self.state_memory, axis=0)
@@ -192,7 +194,7 @@ class PathFinderEnv(gym.Env):
         base_rot = np.array(p.getMatrixFromQuaternion(self.quat)).reshape(3, 3)
         #### Simple draft model applied to the base/center of mass #
         drag_factors = -1 * self.DRAG_COEFF * np.sum(np.array(2*np.pi*rpm/60))
-        drag = np.dot(base_rot, drag_factors*np.array(self.V))
+        drag = np.dot(base_rot, drag_factors*np.array(self.Lv))
         p.applyExternalForce(self.drone,
                              4,
                              forceObj=drag,
@@ -225,19 +227,15 @@ class PathFinderEnv(gym.Env):
         normalized_pos_xy = clipped_xy / MAX_XY
         normalized_pos_z = clipped_z / MAX_Z
 
-        MAX_LA = 2 # m/s^2
-        MAX_WA = 250 # degrees/s
-        clipped_La = np.clip(self.La, -MAX_LA, MAX_LA)
-        clipped_Wa = np.clip(self.Wa, -MAX_WA, MAX_WA)
-
-        state = np.hstack([normalized_pos_xy, normalized_pos_z, clipped_Wa, clipped_La]).reshape(9,)
+        state = np.hstack([normalized_pos_xy, normalized_pos_z, self.La, self.Wa]).reshape(9,)
         return state
   
     def _get_reward(self):
 
-        position_reward = np.tanh(1-0.05*(abs(self.curr_state[:3] - self.final_xyzs)).sum())
+        position_reward = np.tanh(1-(abs(self.xyz - self.final_xyzs)).sum())
+        attitude_reward = np.tanh(1-(abs(self.RPY - self.final_RPYs)).sum())
 
-        return position_reward
+        return position_reward + attitude_reward
 
 
     def reset(self):
@@ -245,9 +243,13 @@ class PathFinderEnv(gym.Env):
         self.current_timestep = 0
         self.action_memory = []
         self.episode_over = False
-        self.curr_state = np.array([*self.init_xyzs, *[0,0,0], *[0,0,0]])
         self.state_memory = deque(maxlen=self.mem_count)
-        self.V, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
+        self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
+        self.Lv_memory = deque(maxlen=2)
+        self.Lv_memory.append(np.array([0,0,0]))
+        self.Wv_memory = deque(maxlen=2)
+        self.Wv_memory.append(np.array([0,0,0]))
+        self.curr_state = np.array([*self.init_xyzs, *self.La, *self.Wa])
 
         p.resetBasePositionAndOrientation(self.drone,
                                           self.curr_state[:3],
