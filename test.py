@@ -32,8 +32,9 @@ def main():
 
     env = gym.make("PathFinder-v0",
                sim_freq=120,
-               init_xyzs=np.array([0,0,0.5]),
+               init_xyzs=np.array([0,0,1.0]),
                gui=True,)
+    env._max_episode_steps = 500
     onnx_path = "fc.onnx"
     onnx_model = onnx.load(onnx_path)
     onnx.checker.check_model(onnx_model)
@@ -42,18 +43,17 @@ def main():
 
     obs = env.reset()
     start = time.time()
-    for i in range(6*env.SIM_FREQ):
+    done = False
+    i = 0
+    while not done:
+        input("step")
         action = model.run(None, {"input": np.expand_dims(obs.astype("float32"), 0)})[0][0]
-        action += 1
-        action /= 2
         obs, reward, done, info = env.step(action)
-        print(action)
-        if i%env.SIM_FREQ == 0:
-            env.render()
-            print(done)
+        action = (action+1)/2
+        print(f"{action}\r")
+        env.render()
         sync(i, start, env.TIMESTEP)
-        if done:
-            obs = env.reset()
+        i += 1
     env.close()
 
 if __name__ == "__main__":

@@ -8,18 +8,20 @@ import pybullet as p
 import pkg_resources
 import xml.etree.ElementTree as etxml
 import pybullet_data
+from collections import deque
 
 
 class PathFinderEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self,
-               init_xyzs=np.array([0,0,0.5]),
-               final_xyzs=np.array([0,0,0.5]),
-               init_RPYs=np.array([0,0,0]),
+               init_xyzs=[0,0,0.5],
+               final_xyzs=[0,0,0.5],
+               init_RPYs=[0,0,0],
                final_yaw=0,
                gui=False,
                sim_freq=120):
+        self.mem_count= 6
     
         # Hyperparameter definition 
         self.x_min = int(-3)
@@ -29,30 +31,31 @@ class PathFinderEnv(gym.Env):
         self.z_min = int(-3)
         self.z_max = int(3) #meter
 
-        self.init_xyzs = init_xyzs
-        self.final_xyzs = init_xyzs
-        self.init_RPYs = init_RPYs
+        self.init_xyzs = np.array(init_xyzs)
+        self.final_xyzs = np.array(final_xyzs)
+        self.init_RPYs = np.array(init_RPYs)
 
         if gui:
             self.client = p.connect(p.GUI)
         else:
             self.client = p.connect(p.DIRECT)
-        self.drone = p.loadURDF(pkg_resources.resource_filename('path_finder', 'assets/drone.urdf'),
-                                self.init_xyzs,
-                                p.getQuaternionFromEuler(self.init_RPYs),
-                                flags = p.URDF_USE_INERTIA_FROM_FILE,
-                                physicsClientId=self.client
-                              )
 
         self.xyz = init_xyzs
         self.RPY = init_RPYs
-        self.state = self._get_state()
-        self.action_memory = []
+        self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
+        self.state = np.array([[*init_xyzs, *self.La, *self.Wa]]*self.mem_count)
+        self.state_memory = deque(maxlen=self.mem_count)
+        self.Lv_memory = deque(maxlen=2)
+        self.Lv_memory.append(np.array([0,0,0]))
+        self.Wv_memory = deque(maxlen=2)
+        self.Wv_memory.append(np.array([0,0,0]))
+        self.quat = p.getQuaternionFromEuler(init_RPYs)
 
         # Drone data
-        self.max_rpm = 20000
+        self.max_rpm = 42000
         self.KF, self.KM = [0,0]
         self._parseURDFParameters()
+        self.DRAG_COEFF = 9.1785e-7
         
         # Sim data
         self.SIM_FREQ = sim_freq
@@ -64,28 +67,34 @@ class PathFinderEnv(gym.Env):
         self.current_episode = 0
         
         # Here, low is the lower limit of observation range, and high is the higher limit.
-        low_ob = np.array([-1,-1,-1, -1,-1,-1]) # x y z R P Y * 6 windows
-        high_ob = np.array([1,1,1, 1,1,1])
+        low_ob = np.array([[-1,-1,-1, -1,-1,-1, -1,-1,-1]]*self.mem_count) # x y z Wx Wy Wz Ax Ay Az * mem_count
+        high_ob = np.array([[1,1,1, 1,1,1, 1,1,1]]*self.mem_count)
         self.observation_space = spaces.Box(low_ob, high_ob,
-                                            shape=(6,),
-                                            dtype=np.float16)
+                                            shape=(self.mem_count,9),
+                                            dtype=np.float32)
         
         # Action space
-        low_action = np.array([0,0,0,0], dtype=np.float16) # RPM control
-        high_action = np.array([1,1,1,1], dtype=np.float16) # RPM control
+        low_action = np.array([0,0,0,0], dtype=np.float32) # RPM control
+        high_action = np.array([1,1,1,1], dtype=np.float32) # RPM control
         self.action_space = spaces.Box(low_action, high_action,
                                             shape=(4,),
-                                            dtype=np.float16)
+                                            dtype=np.float32)
 
         self.physicsSetup()
-        self.plane_id = p.loadURDF("plane.urdf", physicsClientId=self.client)
 
     def physicsSetup(self):
         p.setGravity(0, 0, -self.G, physicsClientId=self.client)
         p.setRealTimeSimulation(0, physicsClientId=self.client)
         p.setTimeStep(self.TIMESTEP, physicsClientId=self.client)
         p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.client)
-    
+        self.drone = p.loadURDF(pkg_resources.resource_filename('path_finder', 'assets/drone.urdf'),
+                            self.init_xyzs,
+                            p.getQuaternionFromEuler(self.init_RPYs),
+                            flags = p.URDF_USE_INERTIA_FROM_FILE,
+                            physicsClientId=self.client
+                          )
+        self.plane_id = p.loadURDF("plane.urdf", physicsClientId=self.client)
+
     def step(self, action):
         
         """
@@ -121,29 +130,34 @@ class PathFinderEnv(gym.Env):
 
         # process action
         action = np.squeeze(action)
-        action += 1
-        action /= 2
         self.last_action = action
 
-        self._physics(action*self.max_rpm)
+        action_rpm = ((action+1)/2) * self.max_rpm
+        self._physics(action_rpm)
         p.stepSimulation(physicsClientId=self.client)
+
         self._updateInput()
-        self.state = self._get_state()
+        self.curr_state = self._normalize_state()
+        self.state_memory.append(self.curr_state)
 
         # Return the reward for action taken given state. Save action to action memory buffer.
-        # self.action_memory.append(action)
         reward = self._get_reward()
 
         # Take a step, and observe environment.
         self.current_timestep += 1
 
-        # if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
-        # or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
-        # or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
-        #     # self.episode_over = True
-        #     reward = -1000
-        
-        return self.state, reward, self.episode_over, {}
+        if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
+        or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
+        or (self.xyz[2] > self.z_max) or (self.xyz[2] < 0.1):
+            self.episode_over = True
+            reward -= 500
+
+        # Wait for state memory to fill up
+        ret_state = np.stack(self.state_memory, axis=0)
+        if len(self.state_memory) < self.mem_count:
+            ret_state = np.stack([self.curr_state]*self.mem_count, axis=0)
+
+        return ret_state, reward, self.episode_over, {}
 
     def _physics(self,
                  rpm,
@@ -154,10 +168,8 @@ class PathFinderEnv(gym.Env):
         ----------
         rpm : ndarray
             (4)-shaped array of ints containing the RPMs values of the 4 motors.
-        nth_drone : int
-            The ordinal number/position of the desired drone in list self.DRONE_IDS.
-
         """
+        # Propeller forces
         forces = np.array(rpm**2)*self.KF
         torques = np.array(rpm**2)*self.KM
         z_torque = (-torques[0] + torques[1] - torques[2] + torques[3])
@@ -176,53 +188,56 @@ class PathFinderEnv(gym.Env):
                               physicsClientId=self.client
                               )
 
+        # Drag
+        base_rot = np.array(p.getMatrixFromQuaternion(self.quat)).reshape(3, 3)
+        #### Simple draft model applied to the base/center of mass #
+        drag_factors = -1 * self.DRAG_COEFF * np.sum(np.array(2*np.pi*rpm/60))
+        drag = np.dot(base_rot, drag_factors*np.array(self.V))
+        p.applyExternalForce(self.drone,
+                             4,
+                             forceObj=drag,
+                             posObj=[0, 0, 0],
+                             flags=p.LINK_FRAME,
+                             physicsClientId=self.client
+                             )
+
     def _get_info(self):
         return self.xyz
 
     def _updateInput(self):
         self.xyz, self.quat = p.getBasePositionAndOrientation(self.drone, physicsClientId=self.client)
         self.RPY = p.getEulerFromQuaternion(self.quat)
+        self.Lv, self.Wv = p.getBaseVelocity(self.drone, self.client)
 
-    def _get_state(self):
+        self.Lv_memory.append(np.array(self.Lv))
+        self.Wv_memory.append(np.array(self.Wv))
 
-        # Clip stuff
-        MAX_PITCH_ROLL = np.pi
-        clipped_RP = np.clip(self.RPY[:2], -MAX_PITCH_ROLL, MAX_PITCH_ROLL)
-        norm_RP = clipped_RP / MAX_PITCH_ROLL
-        norm_Y = self.RPY[2] / MAX_PITCH_ROLL
+        self.La = (self.Lv_memory[1]-self.Lv_memory[0])/self.TIMESTEP # m/s^2
+        self.Wa = (self.Wv_memory[1]-self.Wv_memory[0])/self.TIMESTEP # m/s^2
 
-        MAX_XY = 3
-        MAX_Z = 3
+    def _normalize_state(self):
+
+        # Clip and normalize stuff
+        MAX_XY = self.x_max
+        MAX_Z = self.z_max
         clipped_xy = np.clip(self.xyz[:2], -MAX_XY, MAX_XY)
         clipped_z = np.clip(self.xyz[2], 0, MAX_Z)
         normalized_pos_xy = clipped_xy / MAX_XY
         normalized_pos_z = clipped_z / MAX_Z
 
-        state = np.hstack([normalized_pos_xy, normalized_pos_z, norm_RP, norm_Y]).reshape(6,)
+        MAX_LA = 2 # m/s^2
+        MAX_WA = 250 # degrees/s
+        clipped_La = np.clip(self.La, -MAX_LA, MAX_LA)
+        clipped_Wa = np.clip(self.Wa, -MAX_WA, MAX_WA)
+
+        state = np.hstack([normalized_pos_xy, normalized_pos_z, clipped_Wa, clipped_La]).reshape(9,)
         return state
   
     def _get_reward(self):
-        x, y, z, = self.xyz[0], self.xyz[1], self.xyz[2]
-        fx, fy, fz = self.final_xyzs[0], self.final_xyzs[1], self.final_xyzs[2]
 
-        # reward = 0
-        # if abs(x - fx) < 0.05:
-        #     reward+=1
-        # else:
-        #     reward-=1
-        # if abs(y - fy) < 0.05:
-        #     reward+=0.1
-        # if abs(z - fz) < 0.05:
-        #     reward+=0.1
-        # return reward
+        position_reward = np.tanh(1-0.05*(abs(self.curr_state[:3] - self.final_xyzs)).sum())
 
-        # position_reward = -np.sqrt(((self.xyz[:3]-self.final_xyzs)**2).sum())
-        # euler_reward = -np.sqrt(((self.RPY[:2]-np.array([0,0]))**2).sum())
-        # action_reward = self.last_action.sum()
-
-        # return position_reward# + euler_reward + action_reward
-    
-        return np.tanh(1-0.3*(abs(self.xyz[:3] - self.final_xyzs)).sum())
+        return position_reward
 
 
     def reset(self):
@@ -230,17 +245,23 @@ class PathFinderEnv(gym.Env):
         self.current_timestep = 0
         self.action_memory = []
         self.episode_over = False
-        self.state[:3] = self.init_xyzs
-        self.state[3:] = self.init_RPYs
-        
-        self.physicsSetup()
-        return self.state
+        self.curr_state = np.array([*self.init_xyzs, *[0,0,0], *[0,0,0]])
+        self.state_memory = deque(maxlen=self.mem_count)
+        self.V, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
+
+        p.resetBasePositionAndOrientation(self.drone,
+                                          self.curr_state[:3],
+                                          p.getQuaternionFromEuler(self.init_RPYs),
+                                          physicsClientId=self.client
+                                          )
+        return np.stack([self.curr_state]*self.mem_count, axis=0)
     
     def render(self, mode='human'):
         return 0
     def _render(self, mode='human', close=False):
         return 0
     def close(self):
+        p.disconnect(physicsClientId=self.client)
         return 0
 
     def _parseURDFParameters(self):

@@ -34,43 +34,44 @@ import path_finder
 def run():
     env = gym.make("PathFinder-v0",
                sim_freq=120,
-               init_xyzs=np.array([0,0,0]))
+               init_xyzs=[0,0,0])
     
     n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.array([0.5]*n_actions), sigma=0.1 * np.ones(n_actions))
+    action_noise = NormalActionNoise(mean=np.array([0.5]*n_actions), sigma=0.3 * np.ones(n_actions))
 
     model = TD3(MlpPolicy,
                 env,
                 action_noise=action_noise,
-                learning_rate=1e-3,
+                learning_rate=1e-4,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": Tanh,
-                               "net_arch": [256,256],
-                               "optimizer_class": RMSprop},
-                batch_size=128,
+                               "net_arch": [256,256,256]},
+                batch_size=2048,
                 )
 
-    if os.path.exists("fc.zip"):
-        model.set_parameters("fc")
+    # if os.path.exists("fc.zip"):
+        # model.set_parameters("fc")
 
     # Train with random environments
     try:
-        sessions = 1000
+        sessions = 1000000
         for i in range(sessions):
-            init_x = (np.random.random()*2-1)/(sessions-i)
-            init_y = (np.random.random()*2-1)/(sessions-i)
-            init_z = np.random.random()*2-1
+            init_x = (np.random.random()*2-1)/(1000-i)
+            init_y = (np.random.random()*2-1)/(1000-i)
+            init_z = np.random.random()/(1000-i)+1.0
             init_yaw = np.random.random()*2-1
             env = gym.make("PathFinder-v0",
-                       init_xyzs=np.array([init_x,init_y,0.5]),
-                       final_xyzs=np.array([0,0,0.5]),
-                       init_RPYs=np.array([0,0,0]),
-                       final_yaw=np.array([0]),
+                       init_xyzs=[init_x,init_y,init_z],
+                       final_xyzs=[0,0,1.0],
+                       init_RPYs=[0,0,0],
+                       final_yaw=[0],
                        sim_freq=120)
+            env._max_episode_steps = 1000
             model.set_env(env)
 
             model.learn(total_timesteps=10000)
+            env.close()
     except KeyboardInterrupt:
         pass
     

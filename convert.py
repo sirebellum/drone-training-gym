@@ -22,7 +22,7 @@ def run():
 
     observation_size = model.observation_space.shape
     th.onnx.export(onnxable_model, 
-                   th.randn(1, *observation_size),
+                   th.randn([1, *observation_size]),
                    "fc.onnx",
                    input_names=["input"])
 
