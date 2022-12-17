@@ -33,11 +33,11 @@ import path_finder
 
 def run():
     env = gym.make("PathFinder-v0",
-               sim_freq=120,
+               sim_freq=200,
                init_xyzs=[0,0,0])
     
     n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.array([0.5]*n_actions), sigma=0.1 * np.ones(n_actions))
+    action_noise = NormalActionNoise(mean=np.array([0.0]*n_actions), sigma=0.1 * np.ones(n_actions))
 
     model = TD3(MlpPolicy,
                 env,
@@ -46,32 +46,33 @@ def run():
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": Tanh,
-                               "net_arch": [256,256,256]},
+                               "net_arch": [128,128]},
                 batch_size=2048,
                 )
 
-    # if os.path.exists("fc.zip"):
-        # model.set_parameters("fc")
+    if os.path.exists("fc.zip"):
+        model.set_parameters("fc")
 
     # Train with random environments
     try:
-        sessions = 1000000
+        sessions = 10000
         for i in range(sessions):
-            init_x = (np.random.random()*2-1)/(1000-i)
-            init_y = (np.random.random()*2-1)/(1000-i)
-            init_z = np.random.random()/(1000-i)+1.0
+            init_x = np.random.random()*2-1
+            init_y = np.random.random()*2-1
+            init_z = np.random.random()*2-1
             init_yaw = np.random.random()*2-1
             env = gym.make("PathFinder-v0",
                        init_xyzs=[init_x,init_y,init_z],
-                       final_xyzs=[0,0,1.0],
+                       final_xyzs=[0,0,0],
                        init_RPYs=[0,0,0],
                        final_yaw=0,
-                       sim_freq=120)
+                       sim_freq=200)
             env._max_episode_steps = 100
             model.set_env(env)
 
             model.learn(total_timesteps=10000)
             env.close()
+            model.save("./model_archive/fc"+str(i+1))
     except KeyboardInterrupt:
         pass
     

@@ -32,7 +32,7 @@ def main():
 
     env = gym.make("PathFinder-v0",
                sim_freq=120,
-               init_xyzs=np.array([0,0,1.0]),
+               init_xyzs=np.array([0,0,0.0]),
                gui=True,)
     env._max_episode_steps = 100
     onnx_path = "fc.onnx"
@@ -47,9 +47,8 @@ def main():
     i = 0
     while not done:
         action = model.run(None, {"input": np.expand_dims(obs.astype("float32"), 0)})[0][0]
-        action = (action+1)/2
         obs, reward, done, info = env.step(action)
-        print(f"{action}\r")
+        input(f"{action}, {reward}\r")
         env.render()
         sync(i, start, env.TIMESTEP)
         i += 1
