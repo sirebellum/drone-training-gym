@@ -28,6 +28,7 @@ from stable_baselines3.td3 import MlpPolicy
 from stable_baselines3.common.env_checker import check_env
 from torch.nn.modules.activation import Tanh
 from torch.optim import RMSprop
+from torch.nn import Identity
 
 import path_finder
 
@@ -45,8 +46,6 @@ def run():
                 learning_rate=1e-4,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
-                policy_kwargs={"activation_fn": Tanh,
-                               "net_arch": [128,128]},
                 batch_size=2048,
                 )
 

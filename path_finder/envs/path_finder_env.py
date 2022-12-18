@@ -98,7 +98,7 @@ class PathFinderEnv(gym.Env):
                             flags = p.URDF_USE_INERTIA_FROM_FILE,
                             physicsClientId=self.client
                           )
-        self.plane_id = p.loadURDF("plane.urdf", [0,0,-1], physicsClientId=self.client)
+        # self.plane_id = p.loadURDF("plane.urdf", [0,0,-1], physicsClientId=self.client)
 
     def step(self, action):
         
