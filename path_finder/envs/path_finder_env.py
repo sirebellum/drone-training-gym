@@ -15,21 +15,21 @@ class PathFinderEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self,
-               init_xyzs=[0,0,1.0],
-               final_xyzs=[0,0,1.0],
+               init_xyzs=[0,0,0.0],
+               final_xyzs=[0,0,0.0],
                init_RPYs=[0,0,0],
                final_yaw=0,
                gui=False,
                sim_freq=120):
-        self.mem_count= 128
+        self.mem_count= 256
     
         # Hyperparameter definition 
-        self.x_min = int(-3)
-        self.x_max = int(3)
-        self.y_min = int(-3)
-        self.y_max = int(3)
-        self.z_min = int(-3)
-        self.z_max = int(3) #meter
+        self.x_min = int(-1)
+        self.x_max = int(1)
+        self.y_min = int(-1)
+        self.y_max = int(1)
+        self.z_min = int(-1)
+        self.z_max = int(1)
 
         self.init_xyzs = np.array(init_xyzs)
         self.final_xyzs = np.array(final_xyzs)
@@ -47,7 +47,7 @@ class PathFinderEnv(gym.Env):
         self.final_quat = p.getQuaternionFromEuler(self.final_RPYs)
         self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
-        self.curr_state = np.array([*self.init_xyzs, *self.quat])
+        self.curr_state = np.array([*self.quat])
         self.state_memory = deque(maxlen=self.mem_count)
         for i in range(self.mem_count):
             self.state_memory.append(self.curr_state)
@@ -57,7 +57,7 @@ class PathFinderEnv(gym.Env):
         self.Wv_memory.append(np.array([0,0,0]))
 
         # Drone data
-        self.max_rpm = 32000
+        self.max_rpm = 20000
         self.KF, self.KM = [0,0]
         self._parseURDFParameters()
         self.DRAG_COEFF = 9.1785e-7
@@ -72,10 +72,10 @@ class PathFinderEnv(gym.Env):
         self.current_episode = 0
         
         # Here, low is the lower limit of observation range, and high is the higher limit.
-        low_ob = np.array([[-1,-1,-1, -1,-1,-1,-1]]*self.mem_count) # x y z Qx Qy Qz Qw * mem_count
-        high_ob = np.array([[1,1,1, 1,1,1,1]]*self.mem_count)
+        low_ob = np.array([[-1,-1,-1,-1]]*self.mem_count) # Qx Qy Qz Qw * mem_count
+        high_ob = np.array([[1,1,1,1]]*self.mem_count)
         self.observation_space = spaces.Box(low_ob, high_ob,
-                                            shape=(self.mem_count,7),
+                                            shape=(self.mem_count,4),
                                             dtype=np.float32)
         
         # Action space
@@ -137,7 +137,7 @@ class PathFinderEnv(gym.Env):
         action = np.squeeze(action)
         self.last_action = action
 
-        action_rpm = ((action+1)/2) * self.max_rpm
+        action_rpm = action*self.max_rpm
         self._physics(action_rpm)
         p.stepSimulation(physicsClientId=self.client)
 
@@ -226,12 +226,12 @@ class PathFinderEnv(gym.Env):
         normalized_pos_xy = clipped_xy / MAX_XY
         normalized_pos_z = clipped_z / MAX_Z
 
-        state = np.hstack([normalized_pos_xy, normalized_pos_z, self.quat]).reshape(7,)
+        state = np.hstack([self.quat]).reshape(4,)
         return state
   
     def _get_reward(self):
 
-        position_reward = np.tanh(1-(abs(self.xyz - self.final_xyzs)).sum())
+        position_reward = np.tanh(1-(abs(self.xyz[-1] - self.final_xyzs[-1])).sum())
         attitude_reward = np.tanh(1-(abs(np.array(self.quat) - np.array(self.final_quat))).sum())
 
         return position_reward + attitude_reward
@@ -250,12 +250,12 @@ class PathFinderEnv(gym.Env):
         self.xyz = self.init_xyzs
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(self.init_RPYs)
-        self.curr_state = np.array([*self.init_xyzs, *self.quat])
+        self.curr_state = np.array([*self.quat])
         self.state_memory = deque(maxlen=self.mem_count)
         for i in range(self.mem_count):
             self.state_memory.append(self.curr_state)
         p.resetBasePositionAndOrientation(self.drone,
-                                          self.curr_state[:3],
+                                          self.xyz,
                                           self.quat,
                                           physicsClientId=self.client
                                           )
