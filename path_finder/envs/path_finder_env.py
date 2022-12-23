@@ -21,7 +21,7 @@ class PathFinderEnv(gym.Env):
                final_yaw=0,
                gui=False,
                sim_freq=120):
-        self.mem_count= 256
+        self.mem_count= 128
     
         # Hyperparameter definition 
         self.x_min = int(-1)
@@ -57,7 +57,8 @@ class PathFinderEnv(gym.Env):
         self.Wv_memory.append(np.array([0,0,0]))
 
         # Drone data
-        self.max_rpm = 20000
+        self.hover_rpm = 14500
+        self.max_rpm = self.hover_rpm*2
         self.KF, self.KM = [0,0]
         self._parseURDFParameters()
         self.DRAG_COEFF = 9.1785e-7
@@ -137,7 +138,7 @@ class PathFinderEnv(gym.Env):
         action = np.squeeze(action)
         self.last_action = action
 
-        action_rpm = action*self.max_rpm
+        action_rpm = self.max_rpm*action
         self._physics(action_rpm)
         p.stepSimulation(physicsClientId=self.client)
 
@@ -151,11 +152,10 @@ class PathFinderEnv(gym.Env):
         # Take a step, and observe environment.
         self.current_timestep += 1
 
-        # if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
-        # or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
-        # or (self.xyz[2] > self.z_max) or (self.xyz[2] < 0.1):
-        #     self.episode_over = True
-        #     reward -= 100
+        if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
+        or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
+        or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
+            self.episode_over = True
 
         ret_state = np.stack(self.state_memory, axis=0)
         return ret_state, reward, self.episode_over, {}
@@ -231,10 +231,10 @@ class PathFinderEnv(gym.Env):
   
     def _get_reward(self):
 
-        position_reward = np.tanh(1-(abs(self.xyz[-1] - self.final_xyzs[-1])).sum())
-        attitude_reward = np.tanh(1-(abs(np.array(self.quat) - np.array(self.final_quat))).sum())
+        position_reward = np.tanh(1-(abs(self.xyz - self.final_xyzs)).sum())
+        #attitude_reward = np.tanh(1-(abs(np.array(self.quat) - np.array(self.final_quat))).sum())
 
-        return position_reward + attitude_reward
+        return position_reward# + attitude_reward
 
 
     def reset(self):

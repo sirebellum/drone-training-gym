@@ -33,17 +33,19 @@ import path_finder
 
 def run():
     env = gym.make("PathFinder-v0",
-               sim_freq=200,
+               sim_freq=120,
                init_xyzs=[0,0,0])
     
     model = PPO(MlpPolicy,
                 env,
-                learning_rate=1e-4,
+                learning_rate=3e-4,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": Tanh,
-                               "net_arch": [256,256]},
+                               "net_arch": [64,64],
+                               "squash_output": True},
                 batch_size=2048,
+                device="cuda"
                 )
 
     if os.path.exists("fc.zip"):
@@ -51,28 +53,28 @@ def run():
 
     # Train with random environments
     try:
-        sessions = 10000
+        sessions = 1000
         for i in range(sessions):
             init_x = 0
             init_y = 0
             init_z = 0
-            init_yaw = 0
+            init_roll = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_pitch = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_yaw = (np.random.random()*2-1)*pi/2/(sessions-i)
             env = gym.make("PathFinder-v0",
                        init_xyzs=[init_x,init_y,init_z],
-                       final_xyzs=[0,0,0],
-                       init_RPYs=[0,0,init_yaw],
-                       final_yaw=0,
-                       sim_freq=200)
+                       final_xyzs=[init_x,init_y,init_z],
+                       init_RPYs=[init_roll,init_pitch,init_yaw],
+                       final_yaw=init_yaw,
+                       sim_freq=120)
             env._max_episode_steps = 500
             model.set_env(env)
 
             model.learn(total_timesteps=100000)
-            env.close()
             model.save("./model_archive/fc"+str(i+1))
+            env.close()
     except KeyboardInterrupt:
         pass
     
-    model.save("fc")
-
 if __name__ == "__main__":
     run()
