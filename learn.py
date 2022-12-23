@@ -23,11 +23,11 @@ import gym
 import numpy as np
 from math import pi
 
-from stable_baselines3 import PPO
+from stable_baselines3 import TD3
 from stable_baselines3.common.noise import NormalActionNoise
-from stable_baselines3.ppo import MlpPolicy
+from stable_baselines3.td3 import MlpPolicy
 from stable_baselines3.common.env_util import make_vec_env
-from torch.nn.modules.activation import Tanh
+from torch.nn.modules.activation import ReLU
 
 import path_finder
 
@@ -35,15 +35,18 @@ def run():
     env = gym.make("PathFinder-v0",
                sim_freq=120,
                init_xyzs=[0,0,0])
+
+    n_actions = env.action_space.shape[-1]
+    action_noise = NormalActionNoise(mean=np.array([0.0]*n_actions), sigma=0.1 * np.ones(n_actions))
     
-    model = PPO(MlpPolicy,
+    model = TD3(MlpPolicy,
                 env,
-                learning_rate=3e-4,
+                action_noise=action_noise,
+                learning_rate=1e-4,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
-                policy_kwargs={"activation_fn": Tanh,
-                               "net_arch": [64,64],
-                               "squash_output": True},
+                policy_kwargs={"activation_fn": ReLU,
+                               "net_arch": [64,64]},
                 batch_size=2048,
                 device="cuda"
                 )
@@ -67,14 +70,15 @@ def run():
                        init_RPYs=[init_roll,init_pitch,init_yaw],
                        final_yaw=init_yaw,
                        sim_freq=120)
-            env._max_episode_steps = 500
+            env._max_episode_steps = 200
             model.set_env(env)
 
-            model.learn(total_timesteps=100000)
+            model.learn(total_timesteps=10000)
             model.save("./model_archive/fc"+str(i+1))
             env.close()
     except KeyboardInterrupt:
         pass
+    model.save("fc")
     
 if __name__ == "__main__":
     run()

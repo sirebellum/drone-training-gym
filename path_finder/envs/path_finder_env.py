@@ -21,7 +21,7 @@ class PathFinderEnv(gym.Env):
                final_yaw=0,
                gui=False,
                sim_freq=120):
-        self.mem_count= 128
+        self.mem_count= 64
     
         # Hyperparameter definition 
         self.x_min = int(-1)
@@ -152,10 +152,10 @@ class PathFinderEnv(gym.Env):
         # Take a step, and observe environment.
         self.current_timestep += 1
 
-        if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
-        or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
-        or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
-            self.episode_over = True
+        # if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
+        # or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
+        # or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
+        #     self.episode_over = True
 
         ret_state = np.stack(self.state_memory, axis=0)
         return ret_state, reward, self.episode_over, {}
@@ -231,10 +231,13 @@ class PathFinderEnv(gym.Env):
   
     def _get_reward(self):
 
-        position_reward = np.tanh(1-(abs(self.xyz - self.final_xyzs)).sum())
-        #attitude_reward = np.tanh(1-(abs(np.array(self.quat) - np.array(self.final_quat))).sum())
+        xy_reward = 0.3*np.tanh(1-(abs(self.xyz[:2] - self.final_xyzs[:2])).sum())
+        z_reward = np.tanh(1-(abs(self.xyz[-1] - self.final_xyzs[-1])).sum())
+        position_reward = xy_reward + z_reward
+        
+        attitude_reward = 0.1*np.tanh(1-(abs(np.array(self.quat) - np.array(self.final_quat))).sum())
 
-        return position_reward# + attitude_reward
+        return position_reward + attitude_reward
 
 
     def reset(self):
@@ -259,6 +262,7 @@ class PathFinderEnv(gym.Env):
                                           self.quat,
                                           physicsClientId=self.client
                                           )
+        p.setRealTimeSimulation(0, physicsClientId=self.client)
         return np.stack([self.curr_state]*self.mem_count, axis=0)
     
     def render(self, mode='human'):
