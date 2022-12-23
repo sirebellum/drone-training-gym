@@ -42,7 +42,7 @@ def run():
     model = TD3(MlpPolicy,
                 env,
                 action_noise=action_noise,
-                learning_rate=1e-4,
+                learning_rate=1e-6,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": ReLU,
@@ -61,9 +61,9 @@ def run():
             init_x = 0
             init_y = 0
             init_z = 0
-            init_roll = (np.random.random()*2-1)*pi/2/(sessions-i)
-            init_pitch = (np.random.random()*2-1)*pi/2/(sessions-i)
-            init_yaw = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_roll = (np.random.random()*2-1)*pi/2
+            init_pitch = (np.random.random()*2-1)*pi/2
+            init_yaw = (np.random.random()*2-1)*pi/2
             env = gym.make("PathFinder-v0",
                        init_xyzs=[init_x,init_y,init_z],
                        final_xyzs=[init_x,init_y,init_z],
@@ -73,7 +73,7 @@ def run():
             env._max_episode_steps = 200
             model.set_env(env)
 
-            model.learn(total_timesteps=10000)
+            model.learn(total_timesteps=100000)
             model.save("./model_archive/fc"+str(i+1))
             env.close()
     except KeyboardInterrupt:
