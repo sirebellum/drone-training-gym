@@ -47,7 +47,8 @@ class PathFinderEnv(gym.Env):
         self.final_quat = p.getQuaternionFromEuler(self.final_RPYs)
         self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
-        self.curr_state = np.array([*self.quat])
+        quat_scaled = (np.array(self.quat)+1)*128
+        self.curr_state = np.array([*quat_scaled])
         self.state_memory = deque(maxlen=self.mem_count)
         for i in range(self.mem_count):
             self.state_memory.append(self.curr_state)
@@ -73,18 +74,10 @@ class PathFinderEnv(gym.Env):
         self.current_episode = 0
         
         # Here, low is the lower limit of observation range, and high is the higher limit.
-        low_ob = np.array([[-1,-1,-1,-1]]*self.mem_count) # Qx Qy Qz Qw * mem_count
-        high_ob = np.array([[1,1,1,1]]*self.mem_count)
-        self.observation_space = spaces.Box(low_ob, high_ob,
-                                            shape=(self.mem_count,4),
-                                            dtype=np.float32)
+        self.observation_space = spaces.MultiDiscrete([256, 256, 256, 256]*self.mem_count)
         
         # Action space
-        low_action = np.array([0,0,0,0], dtype=np.float32) # RPM control
-        high_action = np.array([1,1,1,1], dtype=np.float32) # RPM control
-        self.action_space = spaces.Box(low_action, high_action,
-                                            shape=(4,),
-                                            dtype=np.float32)
+        self.action_space = spaces.MultiDiscrete([256]*4)
 
         self.physicsSetup()
 
@@ -134,16 +127,14 @@ class PathFinderEnv(gym.Env):
         if self.episode_over:
             raise RuntimeError("Episode is done. You're running step() despite this fact. Or reset the env by calling reset().") #end execution, and finish run
 
-        # process action
-        action = np.squeeze(action)
-        self.last_action = action
-
-        action_rpm = self.max_rpm*action
+        action_rpm = self.max_rpm*action/256
         self._physics(action_rpm)
         p.stepSimulation(physicsClientId=self.client)
 
         self._updateInput()
         self.curr_state = self._normalize_state()
+        self.curr_state += 1
+        self.curr_state *= 128
         self.state_memory.append(self.curr_state)
 
         # Return the reward for action taken given state. Save action to action memory buffer.
@@ -157,7 +148,7 @@ class PathFinderEnv(gym.Env):
         # or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
         #     self.episode_over = True
 
-        ret_state = np.stack(self.state_memory, axis=0)
+        ret_state = np.concatenate(self.state_memory, axis=0)
         return ret_state, reward, self.episode_over, {}
 
     def _physics(self,
@@ -253,7 +244,8 @@ class PathFinderEnv(gym.Env):
         self.xyz = self.init_xyzs
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(self.init_RPYs)
-        self.curr_state = np.array([*self.quat])
+        quat_scaled = (np.array(self.quat)+1)*128
+        self.curr_state = quat_scaled
         self.state_memory = deque(maxlen=self.mem_count)
         for i in range(self.mem_count):
             self.state_memory.append(self.curr_state)
@@ -263,7 +255,7 @@ class PathFinderEnv(gym.Env):
                                           physicsClientId=self.client
                                           )
         p.setRealTimeSimulation(0, physicsClientId=self.client)
-        return np.stack([self.curr_state]*self.mem_count, axis=0)
+        return np.concatenate([self.curr_state]*self.mem_count, axis=0)
     
     def render(self, mode='human'):
         return 0

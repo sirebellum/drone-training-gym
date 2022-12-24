@@ -23,9 +23,9 @@ import gym
 import numpy as np
 from math import pi
 
-from stable_baselines3 import TD3
+from stable_baselines3 import PPO
 from stable_baselines3.common.noise import NormalActionNoise
-from stable_baselines3.td3 import MlpPolicy
+from stable_baselines3.ppo import MlpPolicy
 from stable_baselines3.common.env_util import make_vec_env
 from torch.nn.modules.activation import ReLU
 
@@ -36,17 +36,14 @@ def run():
                sim_freq=120,
                init_xyzs=[0,0,0])
 
-    n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.array([0.0]*n_actions), sigma=0.1 * np.ones(n_actions))
-    
-    model = TD3(MlpPolicy,
+    model = PPO(MlpPolicy,
                 env,
-                action_noise=action_noise,
-                learning_rate=1e-6,
+                learning_rate=1e-5,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": ReLU,
-                               "net_arch": [64,64]},
+                               "net_arch": [64,64],
+                               "squash_output": True},
                 batch_size=2048,
                 device="cuda"
                 )
@@ -61,9 +58,9 @@ def run():
             init_x = 0
             init_y = 0
             init_z = 0
-            init_roll = (np.random.random()*2-1)*pi/2
-            init_pitch = (np.random.random()*2-1)*pi/2
-            init_yaw = (np.random.random()*2-1)*pi/2
+            init_roll = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_pitch = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_yaw = (np.random.random()*2-1)*pi/2/(sessions-i)
             env = gym.make("PathFinder-v0",
                        init_xyzs=[init_x,init_y,init_z],
                        final_xyzs=[init_x,init_y,init_z],
