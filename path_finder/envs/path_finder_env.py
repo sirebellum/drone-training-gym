@@ -45,17 +45,11 @@ class PathFinderEnv(gym.Env):
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(init_RPYs)
         self.final_quat = p.getQuaternionFromEuler(self.final_RPYs)
-        self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
-        self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
         quat_scaled = (np.array(self.quat)+1)*128
         self.curr_state = np.array([*quat_scaled])
         self.state_memory = deque(maxlen=self.mem_count)
         for i in range(self.mem_count):
             self.state_memory.append(self.curr_state)
-        self.Lv_memory = deque(maxlen=2)
-        self.Lv_memory.append(np.array([0,0,0]))
-        self.Wv_memory = deque(maxlen=2)
-        self.Wv_memory.append(np.array([0,0,0]))
 
         # Drone data
         self.hover_rpm = 14500
@@ -74,10 +68,10 @@ class PathFinderEnv(gym.Env):
         self.current_episode = 0
         
         # Here, low is the lower limit of observation range, and high is the higher limit.
-        self.observation_space = spaces.MultiDiscrete([256, 256, 256, 256]*self.mem_count)
+        self.observation_space = spaces.MultiDiscrete([64, 64, 64, 64]*self.mem_count)
         
         # Action space
-        self.action_space = spaces.MultiDiscrete([256]*4)
+        self.action_space = spaces.MultiDiscrete([64]*4)
 
         self.physicsSetup()
 
@@ -199,24 +193,8 @@ class PathFinderEnv(gym.Env):
     def _updateInput(self):
         self.xyz, self.quat = p.getBasePositionAndOrientation(self.drone, physicsClientId=self.client)
         self.RPY = p.getEulerFromQuaternion(self.quat)
-        self.Lv, self.Wv = p.getBaseVelocity(self.drone, self.client)
 
-        self.Lv_memory.append(np.array(self.Lv))
-        self.Wv_memory.append(np.array(self.Wv))
-
-        self.La = (self.Lv_memory[1]-self.Lv_memory[0])/self.TIMESTEP # m/s^2
-        self.Wa = (self.Wv_memory[1]-self.Wv_memory[0])/self.TIMESTEP # m/s^2
-
-    def _normalize_state(self):
-
-        # Clip and normalize stuff
-        MAX_XY = self.x_max
-        MAX_Z = self.z_max
-        clipped_xy = np.clip(self.xyz[:2], -MAX_XY, MAX_XY)
-        clipped_z = np.clip(self.xyz[2], 0, MAX_Z)
-        normalized_pos_xy = clipped_xy / MAX_XY
-        normalized_pos_z = clipped_z / MAX_Z
-
+    def _normalize_state(self)
         state = np.hstack([self.quat]).reshape(4,)
         return state
   
@@ -234,13 +212,7 @@ class PathFinderEnv(gym.Env):
     def reset(self):
         # reset should always run at the end of an episode and before the first run.
         self.current_timestep = 0
-        self.action_memory = []
         self.episode_over = False
-        self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
-        self.Lv_memory = deque(maxlen=2)
-        self.Lv_memory.append(np.array([0,0,0]))
-        self.Wv_memory = deque(maxlen=2)
-        self.Wv_memory.append(np.array([0,0,0]))
         self.xyz = self.init_xyzs
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(self.init_RPYs)
