@@ -194,7 +194,7 @@ class PathFinderEnv(gym.Env):
         self.xyz, self.quat = p.getBasePositionAndOrientation(self.drone, physicsClientId=self.client)
         self.RPY = p.getEulerFromQuaternion(self.quat)
 
-    def _normalize_state(self)
+    def _normalize_state(self):
         state = np.hstack([self.quat]).reshape(4,)
         return state
   
