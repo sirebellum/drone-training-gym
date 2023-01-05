@@ -21,8 +21,7 @@ class PathFinderEnv(gym.Env):
                final_yaw=0,
                gui=False,
                sim_freq=120):
-        self.mem_count= 1
-    
+
         # Hyperparameter definition 
         self.x_min = int(-1)
         self.x_max = int(1)
@@ -186,14 +185,6 @@ class PathFinderEnv(gym.Env):
 
     def _normalize_state(self):
 
-        # Clip and normalize stuff
-        MAX_XY = self.x_max
-        MAX_Z = self.z_max
-        clipped_xy = np.clip(self.xyz[:2], -MAX_XY, MAX_XY)
-        clipped_z = np.clip(self.xyz[2], 0, MAX_Z)
-        normalized_pos_xy = clipped_xy / MAX_XY
-        normalized_pos_z = clipped_z / MAX_Z
-
         MAX_VEL_L = 5
         MAX_VEL_W = 180
         clipped_vel_l = np.clip(self.Lv, -MAX_VEL_L, MAX_VEL_L)
@@ -226,23 +217,19 @@ class PathFinderEnv(gym.Env):
     def reset(self):
         # reset should always run at the end of an episode and before the first run.
         self.current_timestep = 0
-        self.action_memory = []
         self.episode_over = False
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
         self.xyz = self.init_xyzs
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(self.init_RPYs)
         self.curr_state = np.array([*self.quat, *self.Wv])
-        self.state_memory = deque(maxlen=self.mem_count)
-        for i in range(self.mem_count):
-            self.state_memory.append(self.curr_state)
         p.resetBasePositionAndOrientation(self.drone,
                                           self.xyz,
                                           self.quat,
                                           physicsClientId=self.client
                                           )
         p.setRealTimeSimulation(0, physicsClientId=self.client)
-        return np.concatenate([self.curr_state]*self.mem_count, axis=0)
+        return self.curr_state
     
     def render(self, mode='human'):
         return 0
