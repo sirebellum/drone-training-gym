@@ -48,10 +48,6 @@ class PathFinderEnv(gym.Env):
         self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
         self.curr_state = np.array([*self.quat, *self.Wv])
-        self.Lv_memory = deque(maxlen=2)
-        self.Lv_memory.append(np.array([0,0,0]))
-        self.Wv_memory = deque(maxlen=2)
-        self.Wv_memory.append(np.array([0,0,0]))
 
         # Drone data
         self.hover_rpm = 14500
@@ -65,19 +61,11 @@ class PathFinderEnv(gym.Env):
         self.TIMESTEP = 1./self.SIM_FREQ
         self.G = 9.8
 
-        # ???
         self.episode_over = False
         self.current_episode = 0
         
-        # Here, low is the lower limit of observation range, and high is the higher limit.
-        low_ob = np.array([-1,-1,-1,-1, -1,-1,-1]) # Qx Qy Qz Qw Wx Wy Wz
-        high_ob = np.array([1,1,1,1, 1,1,1])
-        self.observation_space = spaces.Box(low_ob, high_ob,
-                                            shape=(7,),
-                                            dtype=np.float32)
-        
-        # Action space
-        self.action_space = spaces.MultiDiscrete([256]*4)
+        self.observation_space = spaces.MultiDiscrete([256]*7) # Qx Qy Qz Qw Wx Wy Wz
+        self.action_space = spaces.MultiDiscrete([256]*4) # one for each motor
 
         self.physicsSetup()
 
