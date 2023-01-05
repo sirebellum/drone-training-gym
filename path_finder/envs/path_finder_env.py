@@ -45,7 +45,6 @@ class PathFinderEnv(gym.Env):
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(init_RPYs)
         self.final_quat = p.getQuaternionFromEuler(self.final_RPYs)
-        self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
         self.curr_state = np.array([*self.quat, *self.Wv])
 
@@ -64,8 +63,8 @@ class PathFinderEnv(gym.Env):
         self.episode_over = False
         self.current_episode = 0
         
-        self.observation_space = spaces.MultiDiscrete([256]*7) # Qx Qy Qz Qw Wx Wy Wz
-        self.action_space = spaces.MultiDiscrete([256]*4) # one for each motor
+        self.observation_space = spaces.MultiDiscrete([64]*7) # Qx Qy Qz Qw Wx Wy Wz
+        self.action_space = spaces.MultiDiscrete([64]*4) # one for each motor
 
         self.physicsSetup()
 
@@ -185,12 +184,6 @@ class PathFinderEnv(gym.Env):
         self.RPY = p.getEulerFromQuaternion(self.quat)
         self.Lv, self.Wv = p.getBaseVelocity(self.drone, self.client)
 
-        self.Lv_memory.append(np.array(self.Lv))
-        self.Wv_memory.append(np.array(self.Wv))
-
-        self.La = (self.Lv_memory[1]-self.Lv_memory[0])/self.TIMESTEP # m/s^2
-        self.Wa = (self.Wv_memory[1]-self.Wv_memory[0])/self.TIMESTEP # m/s^2
-
     def _normalize_state(self):
 
         # Clip and normalize stuff
@@ -235,7 +228,6 @@ class PathFinderEnv(gym.Env):
         self.current_timestep = 0
         self.action_memory = []
         self.episode_over = False
-        self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
         self.xyz = self.init_xyzs
         self.RPY = self.init_RPYs
