@@ -42,9 +42,7 @@ def run():
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": ReLU,
-                               "net_arch": [64,64],
-                               "squash_output": True},
-                batch_size=2048,
+                               "net_arch": [64,64]},
                 device="cuda"
                 )
 

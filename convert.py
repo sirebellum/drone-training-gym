@@ -9,7 +9,13 @@ class OnnxablePolicy(th.nn.Module):
     def forward(self, observation):
         # NOTE: You may have to process (normalize) observation in the correct
         #       way before using this. See `common.preprocessing.preprocess_obs`
-        return self.action_net(observation)
+        scaled_action = self.action_net(observation)
+
+        low = 0
+        high = 1
+        act = low + (0.5 * (scaled_action + 1.0) * (high - low))
+
+        return act
 
 def run():
 
