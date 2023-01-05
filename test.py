@@ -6,13 +6,16 @@ import gym
 
 import onnx
 import onnxruntime as ort
-from stable_baselines3 import TD3
+
+from stable_baselines3 import PPO
+from stable_baselines3.ppo import MlpPolicy
+from torch.nn.modules.activation import ReLU
 
 def main():
 
     env = gym.make("PathFinder-v0",
                sim_freq=120,
-               init_xyzs=np.array([0,0.0,0.0]),
+               init_xyzs=np.array([0.0,0,0]),
                init_RPYs=[0.0,0.0,0.0],
                gui=True,)
     env._max_episode_steps = 200
@@ -29,11 +32,9 @@ def main():
     i = 0
     while not done:
         action = model.run(None, {"input": np.expand_dims(obs.astype("float32"), 0)})[0]
-        action = (action+1)/2
-        input(f"{i} {action}, {tot_reward}\r")
+        input(f"{i} {action} {tot_reward}")
         obs, reward, done, info = env.step(action)
         tot_reward += reward
-        input(f"{i} {action}, {tot_reward}\r")
         env.render()
         i += 1
     env.close()

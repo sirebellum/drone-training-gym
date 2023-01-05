@@ -21,7 +21,7 @@ class PathFinderEnv(gym.Env):
                final_yaw=0,
                gui=False,
                sim_freq=120):
-        self.mem_count= 64
+        self.mem_count= 1
     
         # Hyperparameter definition 
         self.x_min = int(-1)
@@ -47,10 +47,7 @@ class PathFinderEnv(gym.Env):
         self.final_quat = p.getQuaternionFromEuler(self.final_RPYs)
         self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
         self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
-        self.curr_state = np.array([*self.quat])
-        self.state_memory = deque(maxlen=self.mem_count)
-        for i in range(self.mem_count):
-            self.state_memory.append(self.curr_state)
+        self.curr_state = np.array([*self.quat, *self.Wv])
         self.Lv_memory = deque(maxlen=2)
         self.Lv_memory.append(np.array([0,0,0]))
         self.Wv_memory = deque(maxlen=2)
@@ -73,10 +70,10 @@ class PathFinderEnv(gym.Env):
         self.current_episode = 0
         
         # Here, low is the lower limit of observation range, and high is the higher limit.
-        low_ob = np.array([[-1,-1,-1,-1]]*self.mem_count) # Qx Qy Qz Qw * mem_count
-        high_ob = np.array([[1,1,1,1]]*self.mem_count)
+        low_ob = np.array([-1,-1,-1,-1, -1,-1,-1]) # Qx Qy Qz Qw Wx Wy Wz
+        high_ob = np.array([1,1,1,1, 1,1,1])
         self.observation_space = spaces.Box(low_ob, high_ob,
-                                            shape=(self.mem_count,4),
+                                            shape=(7,),
                                             dtype=np.float32)
         
         # Action space
@@ -121,7 +118,7 @@ class PathFinderEnv(gym.Env):
                 episode_over (bool) :
                     whether it's time to reset the environment again. Most (but not
                     all) tasks are divided up into well-defined episodes, and done
-                    being True indicates the episode has terminated. (For example,
+                    being True indicates the episode has teyrminated. (For example,
                     perhaps the pole tipped too far, or you lost your last life.)
                 info (dict) :
                      diagnostic information useful for debugging. It can sometimes
@@ -144,7 +141,6 @@ class PathFinderEnv(gym.Env):
 
         self._updateInput()
         self.curr_state = self._normalize_state()
-        self.state_memory.append(self.curr_state)
 
         # Return the reward for action taken given state. Save action to action memory buffer.
         reward = self._get_reward()
@@ -152,13 +148,12 @@ class PathFinderEnv(gym.Env):
         # Take a step, and observe environment.
         self.current_timestep += 1
 
-        # if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
-        # or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
-        # or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
-        #     self.episode_over = True
+        if (self.xyz[0] > self.x_max) or (self.xyz[0] < self.x_min) \
+        or (self.xyz[1] > self.y_max) or (self.xyz[1] < self.y_min) \
+        or (self.xyz[2] > self.z_max) or (self.xyz[2] < self.z_min):
+            self.episode_over = True
 
-        ret_state = np.stack(self.state_memory, axis=0)
-        return ret_state, reward, self.episode_over, {}
+        return self.curr_state, reward, self.episode_over, {}
 
     def _physics(self,
                  rpm,
@@ -226,18 +221,33 @@ class PathFinderEnv(gym.Env):
         normalized_pos_xy = clipped_xy / MAX_XY
         normalized_pos_z = clipped_z / MAX_Z
 
-        state = np.hstack([self.quat]).reshape(4,)
+        MAX_VEL_L = 5
+        MAX_VEL_W = 180
+        clipped_vel_l = np.clip(self.Lv, -MAX_VEL_L, MAX_VEL_L)
+        clipped_vel_w = np.clip(self.Wv, -MAX_VEL_W, MAX_VEL_W)
+        normalized_vel_l = clipped_vel_l / MAX_VEL_L
+        normalized_vel_w = clipped_vel_w / MAX_VEL_W
+
+        state = np.hstack([self.quat, normalized_vel_w]).reshape(7,)
         return state
   
     def _get_reward(self):
 
-        xy_reward = 0.3*np.tanh(1-(abs(self.xyz[:2] - self.final_xyzs[:2])).sum())
-        z_reward = np.tanh(1-(abs(self.xyz[-1] - self.final_xyzs[-1])).sum())
-        position_reward = xy_reward + z_reward
-        
-        attitude_reward = 0.1*np.tanh(1-(abs(np.array(self.quat) - np.array(self.final_quat))).sum())
+        z_reward = np.tanh(0.1-np.sqrt((self.xyz[-1] - self.final_xyzs[-1])**2))
+        xy_reward = np.tanh(0.1-np.sqrt((self.xyz[:2] - self.final_xyzs[:2])**2).sum())
+        position_reward = 0.1*xy_reward + z_reward
 
-        return position_reward + attitude_reward
+        # quat_reward = np.tanh(np.inner(np.array(self.quat), np.array(self.final_quat))**2)
+
+        rot_penalty = np.sqrt(np.array(self.Wv[-1])**2)
+        rot_penalty += np.sqrt(np.array(self.Wv[-2])**2)
+        rot_penalty += np.sqrt(np.array(self.Wv[-3])**2)
+
+        # action_reward = np.sum(self.last_action)
+
+        survival_reward = (self.current_timestep/self.SIM_FREQ)**2
+
+        return position_reward - 0.01*rot_penalty + survival_reward
 
 
     def reset(self):
@@ -246,14 +256,11 @@ class PathFinderEnv(gym.Env):
         self.action_memory = []
         self.episode_over = False
         self.La, self.Wa = [np.array([0,0,0]), np.array([0,0,0])]
-        self.Lv_memory = deque(maxlen=2)
-        self.Lv_memory.append(np.array([0,0,0]))
-        self.Wv_memory = deque(maxlen=2)
-        self.Wv_memory.append(np.array([0,0,0]))
+        self.Lv, self.Wv = [np.array([0,0,0]), np.array([0,0,0])]
         self.xyz = self.init_xyzs
         self.RPY = self.init_RPYs
         self.quat = p.getQuaternionFromEuler(self.init_RPYs)
-        self.curr_state = np.array([*self.quat])
+        self.curr_state = np.array([*self.quat, *self.Wv])
         self.state_memory = deque(maxlen=self.mem_count)
         for i in range(self.mem_count):
             self.state_memory.append(self.curr_state)
@@ -263,7 +270,7 @@ class PathFinderEnv(gym.Env):
                                           physicsClientId=self.client
                                           )
         p.setRealTimeSimulation(0, physicsClientId=self.client)
-        return np.stack([self.curr_state]*self.mem_count, axis=0)
+        return np.concatenate([self.curr_state]*self.mem_count, axis=0)
     
     def render(self, mode='human'):
         return 0

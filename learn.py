@@ -47,7 +47,6 @@ def run():
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": ReLU,
                                "net_arch": [64,64]},
-                batch_size=2048,
                 device="cuda"
                 )
 
@@ -61,9 +60,9 @@ def run():
             init_x = 0
             init_y = 0
             init_z = 0
-            init_roll = (np.random.random()*2-1)*pi/2
-            init_pitch = (np.random.random()*2-1)*pi/2
-            init_yaw = (np.random.random()*2-1)*pi/2
+            init_roll = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_pitch = (np.random.random()*2-1)*pi/2/(sessions-i)
+            init_yaw = (np.random.random()*2-1)*pi/2/(sessions-i)
             env = gym.make("PathFinder-v0",
                        init_xyzs=[init_x,init_y,init_z],
                        final_xyzs=[init_x,init_y,init_z],
