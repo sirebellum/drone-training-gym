@@ -20,6 +20,7 @@ class OnnxablePolicy(th.nn.Module):
 def run():
 
     model = TD3.load("fc", device="cpu")
+    print(model.actor)
     onnxable_model = OnnxablePolicy(
         model.actor
     )

@@ -42,7 +42,7 @@ def run():
     model = TD3(MlpPolicy,
                 env,
                 action_noise=action_noise,
-                learning_rate=1e-6,
+                learning_rate=1e-4,
                 verbose=1,
                 tensorboard_log="tensorboard/hover",
                 policy_kwargs={"activation_fn": ReLU,

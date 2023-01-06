@@ -16,7 +16,7 @@ def main():
     env = gym.make("PathFinder-v0",
                sim_freq=120,
                init_xyzs=np.array([0.0,0,0]),
-               init_RPYs=[0.0,0.0,0.0],
+               init_RPYs=[1.2,-0.42,0.0],
                gui=True,)
     env._max_episode_steps = 200
 
